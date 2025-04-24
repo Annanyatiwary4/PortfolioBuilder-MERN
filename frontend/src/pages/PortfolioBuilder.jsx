@@ -8,12 +8,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { GripVertical, Save } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { GripVertical, Save, CheckCircle, XCircle } from 'lucide-react';
 import PortfolioPreview from '@/components/PortfolioPreview';
 import { portfolioThemes } from '@/lib/themes';
-import { Toaster } from "@/components/ui/sonner"
-import { toast } from "sonner"
-
 
 const ComponentTypes = {
   HEADER: 'header',
@@ -24,6 +22,32 @@ const ComponentTypes = {
   PROJECTS: 'projects',
   ACHIEVEMENTS: 'achievements',
   CONTACT: 'contact',
+};
+
+// Custom Alert component
+const CustomAlert = ({ variant = "default", title, message, onClose, visible }) => {
+  if (!visible) return null;
+
+  return (
+    <Alert variant={variant} className="mb-6 animate-in fade-in slide-in-from-top-5 duration-300">
+      <div className="flex items-start justify-between">
+        <div className="flex items-center gap-2">
+          {variant === "destructive" ? (
+            <XCircle className="h-4 w-4" />
+          ) : (
+            <CheckCircle className="h-4 w-4" />
+          )}
+          <AlertTitle>{title}</AlertTitle>
+        </div>
+        {onClose && (
+          <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={onClose}>
+            <XCircle className="h-4 w-4" />
+          </Button>
+        )}
+      </div>
+      <AlertDescription className="mt-1">{message}</AlertDescription>
+    </Alert>
+  );
 };
 
 // Component for the palette items
@@ -85,7 +109,7 @@ const ReorderableComponent = ({ id, index, component, onMoveComponent, onClick, 
     >
       <CardContent className="p-4">
         <div className="space-y-4">
-          <div className="flex justify-between items-center">
+          <div className="flex justify-between items-center flex-wrap gap-2">
             <div className="flex items-center">
               <GripVertical className="mr-2 cursor-move text-muted-foreground" />
               <h3 className="font-medium">{component.type}</h3>
@@ -164,7 +188,7 @@ const ComponentEditor = ({ type, content = {}, onChange }) => {
             value={content?.projectTitle || ''}
             onChange={(e) => onChange({ ...content, projectTitle: e.target.value })}
           />
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Input
               placeholder="GitHub Repository URL"
               type="url"
@@ -234,7 +258,7 @@ const ComponentEditor = ({ type, content = {}, onChange }) => {
             value={content?.degree || ''}
             onChange={(e) => onChange({ ...content, degree: e.target.value })}
           />
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Input
               placeholder="Start Date"
               value={content?.startDate || ''}
@@ -266,7 +290,7 @@ const ComponentEditor = ({ type, content = {}, onChange }) => {
             value={content?.position || ''}
             onChange={(e) => onChange({ ...content, position: e.target.value })}
           />
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Input
               placeholder="Start Date"
               value={content?.startDate || ''}
@@ -288,7 +312,7 @@ const ComponentEditor = ({ type, content = {}, onChange }) => {
     case ComponentTypes.CONTACT:
       return (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Input
               placeholder="Email"
               type="email"
@@ -304,7 +328,7 @@ const ComponentEditor = ({ type, content = {}, onChange }) => {
           </div>
           <div className="space-y-2">
             <label className="text-sm font-medium">Social Media</label>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 placeholder="GitHub Profile URL"
                 type="url"
@@ -375,6 +399,29 @@ export default function PortfolioBuilder() {
   const [publishSlug, setPublishSlug] = useState('');
   const [publishDialogOpen, setPublishDialogOpen] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  
+  // Alert state
+  const [alert, setAlert] = useState({
+    visible: false,
+    variant: "default",
+    title: "",
+    message: ""
+  });
+
+  // Show alert helper function
+  const showAlert = (variant, title, message) => {
+    setAlert({
+      visible: true,
+      variant,
+      title,
+      message
+    });
+    
+    // Auto-dismiss after 5 seconds
+    setTimeout(() => {
+      setAlert(prev => ({ ...prev, visible: false }));
+    }, 5000);
+  };
 
   // Initialize local state with portfolio data
   useEffect(() => {
@@ -505,17 +552,17 @@ export default function PortfolioBuilder() {
       });
       
       setHasUnsavedChanges(false);
-      toast({
-        title: "Changes saved",
-        description: "Your portfolio has been updated successfully.",
-        variant: "success",
-      });
+      showAlert(
+        "default", 
+        "Changes saved", 
+        "Your portfolio has been updated successfully."
+      );
     } catch (error) {
-      toast({
-        title: "Failed to save changes",
-        description: error.message || "An error occurred while saving changes.",
-        variant: "destructive",
-      });
+      showAlert(
+        "destructive", 
+        "Failed to save changes", 
+        error.message || "An error occurred while saving changes."
+      );
     }
   };
 
@@ -538,38 +585,38 @@ export default function PortfolioBuilder() {
 
       await updatePortfolio.mutateAsync(updates);
       setPublishDialogOpen(false);
-      toast({
-        title: "Portfolio published!",
-        description: `Your portfolio is now available at /portfolio/${updates.slug}`,
-        variant: "success",
-      });
+      showAlert(
+        "default", 
+        "Portfolio published!", 
+        `Your portfolio is now available at /portfolio/${updates.slug}`
+      );
     } catch (error) {
-      toast({
-        title: "Failed to publish",
-        description: error.message || "An error occurred while publishing your portfolio.",
-        variant: "destructive",
-      });
+      showAlert(
+        "destructive", 
+        "Failed to publish", 
+        error.message || "An error occurred while publishing your portfolio."
+      );
     }
   };
 
-  if (isLoading) return <div>Loading...</div>;
-  if (error) return <div>Error: {error.message}</div>;
-  if (!localPortfolio) return <div>Loading portfolio data...</div>;
+  if (isLoading) return <div className="container flex justify-center items-center min-h-screen">Loading...</div>;
+  if (error) return <div className="container flex justify-center items-center min-h-screen">Error: {error.message}</div>;
+  if (!localPortfolio) return <div className="container flex justify-center items-center min-h-screen">Loading portfolio data...</div>;
 
   return (
-    <div className="container py-8">
+    <div className="container py-4 sm:py-8 px-4 sm:px-6">
       <div className="max-w-6xl mx-auto">
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold">{localPortfolio?.title || 'Portfolio Builder'}</h1>
-          <div className="space-x-4">
-            <Button variant="outline" onClick={() => navigate('/profile')}>
-              Back to Profile
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4 sm:mb-8">
+          <h1 className="text-2xl sm:text-3xl font-bold">{localPortfolio?.title || 'Portfolio Builder'}</h1>
+          <div className="flex flex-wrap gap-2 sm:gap-4 w-full sm:w-auto">
+            <Button variant="outline" onClick={() => navigate('/profile')} className="flex-grow sm:flex-grow-0">
+              Back
             </Button>
             <Dialog>
               <DialogTrigger asChild>
-                <Button>Preview</Button>
+                <Button className="flex-grow sm:flex-grow-0">Preview</Button>
               </DialogTrigger>
-              <DialogContent className="max-w-4xl">
+              <DialogContent className="max-w-full sm:max-w-4xl">
                 <DialogHeader>
                   <DialogTitle>Portfolio Preview</DialogTitle>
                 </DialogHeader>
@@ -585,29 +632,41 @@ export default function PortfolioBuilder() {
               variant="default"
               onClick={handleSaveChanges}
               disabled={updatePortfolio.isLoading || !hasUnsavedChanges}
-              className="gap-2"
+              className="gap-2 flex-grow sm:flex-grow-0"
             >
               <Save size={16} />
-              Save Changes
+              Save
             </Button>
             <Button
               variant="default"
               onClick={() => setPublishDialogOpen(true)}
+              className="flex-grow sm:flex-grow-0"
             >
               Publish
             </Button>
           </div>
         </div>
 
+        <CustomAlert 
+          variant={alert.variant}
+          title={alert.title}
+          message={alert.message}
+          visible={alert.visible}
+          onClose={() => setAlert(prev => ({ ...prev, visible: false }))}
+        />
+
         {hasUnsavedChanges && (
-          <div className="mb-6 p-4 rounded-md bg-yellow-50 border border-yellow-200 text-yellow-800">
-            <p>You have unsaved changes. Click "Save Changes" to save them before publishing.</p>
-          </div>
+          <Alert className="mb-6" variant="warning">
+            <AlertTitle>Unsaved Changes</AlertTitle>
+            <AlertDescription>
+              You have unsaved changes. Click "Save" to save them before publishing.
+            </AlertDescription>
+          </Alert>
         )}
 
-        <div className="grid grid-cols-12 gap-6">
-          <div className="col-span-4">
-            <Tabs defaultValue="components">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <div className="lg:col-span-4 lg:order-1 order-2">
+            <Tabs defaultValue="components" className="w-full">
               <TabsList className="w-full">
                 <TabsTrigger value="components" className="flex-1">Components</TabsTrigger>
                 <TabsTrigger value="settings" className="flex-1">Settings</TabsTrigger>
@@ -669,7 +728,7 @@ export default function PortfolioBuilder() {
 
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Theme</label>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       {Object.values(portfolioThemes).map((theme) => (
                         <div
                           key={theme.id}
@@ -724,40 +783,48 @@ export default function PortfolioBuilder() {
             </Tabs>
           </div>
 
-          <div className="col-span-8">
+          <div className="lg:col-span-8 lg:order-2 order-1">
             <div>
-              {localPortfolio?.components?.map((component, index) => (
-                <ReorderableComponent
-                  key={`component-${index}`}
-                  id={`component-${index}`}
-                  index={index}
-                  component={component}
-                  onMoveComponent={moveComponent}
-                  onClick={() => setSelectedComponent(index)}
-                  onRemove={() => handleRemoveComponent(index)}
-                  isSelected={selectedComponent === index}
-                >
-                  <ComponentEditor
-                    type={component.type}
-                    content={component.content}
-                    onChange={(content) => handleComponentUpdate(index, content)}
-                  />
-                </ReorderableComponent>
-              ))}
+              {localPortfolio?.components?.length === 0 ? (
+                <div className="text-center p-8 border-2 border-dashed rounded-lg">
+                  <p className="text-muted-foreground">
+                    Add components from the palette to build your portfolio.
+                  </p>
+                </div>
+              ) : (
+                localPortfolio?.components?.map((component, index) => (
+                  <ReorderableComponent
+                    key={`component-${index}`}
+                    id={`component-${index}`}
+                    index={index}
+                    component={component}
+                    onMoveComponent={moveComponent}
+                    onClick={() => setSelectedComponent(index)}
+                    onRemove={() => handleRemoveComponent(index)}
+                    isSelected={selectedComponent === index}
+                  >
+                    <ComponentEditor
+                      type={component.type}
+                      content={component.content}
+                      onChange={(content) => handleComponentUpdate(index, content)}
+                    />
+                  </ReorderableComponent>
+                ))
+              )}
             </div>
           </div>
         </div>
       </div>
 
       <Dialog open={publishDialogOpen} onOpenChange={setPublishDialogOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Publish Portfolio</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <label htmlFor="publish-slug">Portfolio URL</label>
-              <div className="flex items-center space-x-2">
+              <label htmlFor="publish-slug" className="text-sm font-medium">Portfolio URL</label>
+              <div className="flex items-center space-x-2 mt-1.5">
                 <span className="text-sm text-muted-foreground">
                   /portfolio/
                 </span>
@@ -773,20 +840,58 @@ export default function PortfolioBuilder() {
                 This URL will be used to access your published portfolio.
               </p>
             </div>
-            <div className="flex justify-end space-x-2">
+            <div className="flex justify-end space-x-2 pt-4">
               <Button variant="outline" onClick={() => setPublishDialogOpen(false)}>
                 Cancel
               </Button>
               <Button
                 onClick={handlePublish}
                 disabled={updatePortfolio.isLoading || (!publishSlug && !localPortfolio?.slug)}
-              >
-                {updatePortfolio.isLoading ? 'Publishing...' : 'Publish'}
+              >{updatePortfolio.isLoading ? 'Publishing...' : 'Publish'}
               </Button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Mobile component list view toggle for smaller screens */}
+      <div className="fixed bottom-4 right-4 lg:hidden z-10">
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button className="rounded-full shadow-lg h-14 w-14 p-0 flex items-center justify-center">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect width="18" height="18" x="3" y="3" rx="2" />
+                <path d="M9 3v18" />
+                <path d="M3 9h6" />
+                <path d="M3 15h6" />
+                <path d="M15 3v18" />
+                <path d="M15 9h6" />
+                <path d="M15 15h6" />
+              </svg>
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="w-[90vw] max-w-md">
+            <DialogHeader>
+              <DialogTitle>Add Components</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              {Object.entries(ComponentTypes).map(([key, type]) => (
+                <div 
+                  key={key} 
+                  className="p-4 border rounded-md cursor-pointer hover:bg-accent"
+                  onClick={() => {
+                    handleDrop(type);
+                    document.querySelector('[data-radix-dialog-close]').click();
+                  }}
+                >
+                  <h3 className="font-medium">{key} Section</h3>
+                  <p className="text-sm text-muted-foreground">Tap to add</p>
+                </div>
+              ))}
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
     </div>
   );
 }
