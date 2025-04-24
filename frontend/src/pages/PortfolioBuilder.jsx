@@ -8,10 +8,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { GripVertical } from 'lucide-react';
+import { GripVertical, Save } from 'lucide-react';
 import PortfolioPreview from '@/components/PortfolioPreview';
 import { portfolioThemes } from '@/lib/themes';
-
+import { Toaster } from "@/components/ui/sonner"
+import { toast } from "sonner"
 
 
 const ComponentTypes = {
@@ -367,46 +368,60 @@ export default function PortfolioBuilder() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { portfolio, isLoading, error, updatePortfolio } = usePortfolio(id);
+  
+  // Local state for editing
+  const [localPortfolio, setLocalPortfolio] = useState(null);
   const [selectedComponent, setSelectedComponent] = useState(null);
   const [publishSlug, setPublishSlug] = useState('');
   const [publishDialogOpen, setPublishDialogOpen] = useState(false);
-  const [selectedTheme, setSelectedTheme] = useState(portfolio?.theme || 'classic');
-  
-  useEffect(() => {
-    if (portfolio?.theme) {
-      setSelectedTheme(portfolio.theme);
-    }
-  }, [portfolio]);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
+  // Initialize local state with portfolio data
+  useEffect(() => {
+    if (portfolio && !localPortfolio) {
+      setLocalPortfolio({
+        ...portfolio,
+        theme: portfolio.theme || 'classic',
+      });
+    }
+  }, [portfolio, localPortfolio]);
   
   // Handle adding a new component from the palette
   const handleDrop = useCallback((type) => {
     const newComponent = {
       type,
       content: {},
-      order: portfolio?.components?.length || 0,
+      order: localPortfolio?.components?.length || 0,
     };
 
-    updatePortfolio.mutate({
-      components: [...(portfolio?.components || []), newComponent],
-    });
-  }, [portfolio, updatePortfolio]);
+    setLocalPortfolio(prev => ({
+      ...prev,
+      components: [...(prev?.components || []), newComponent]
+    }));
+    
+    setHasUnsavedChanges(true);
+  }, [localPortfolio]);
 
   // Handle updating a component's content
   const handleComponentUpdate = useCallback((index, content) => {
-    const newComponents = [...portfolio.components];
+    if (!localPortfolio?.components) return;
+    
+    const newComponents = [...localPortfolio.components];
     newComponents[index] = { ...newComponents[index], content };
 
-    updatePortfolio.mutate({
-      components: newComponents,
-    });
-  }, [portfolio, updatePortfolio]);
+    setLocalPortfolio(prev => ({
+      ...prev,
+      components: newComponents
+    }));
+    
+    setHasUnsavedChanges(true);
+  }, [localPortfolio]);
 
   // Handle reordering of components
   const moveComponent = useCallback((fromIndex, toIndex) => {
-    if (!portfolio?.components) return;
+    if (!localPortfolio?.components) return;
 
-    const newComponents = [...portfolio.components];
+    const newComponents = [...localPortfolio.components];
     const [movedComponent] = newComponents.splice(fromIndex, 1);
     newComponents.splice(toIndex, 0, movedComponent);
 
@@ -416,10 +431,11 @@ export default function PortfolioBuilder() {
       order: index
     }));
 
-    updatePortfolio.mutate({
-      components: updatedComponents,
-    });
-
+    setLocalPortfolio(prev => ({
+      ...prev,
+      components: updatedComponents
+    }));
+    
     // Update selected component index if it was moved
     if (selectedComponent === fromIndex) {
       setSelectedComponent(toIndex);
@@ -428,11 +444,15 @@ export default function PortfolioBuilder() {
     } else if (selectedComponent < fromIndex && selectedComponent >= toIndex) {
       setSelectedComponent(selectedComponent + 1);
     }
-  }, [portfolio, updatePortfolio, selectedComponent]);
+    
+    setHasUnsavedChanges(true);
+  }, [localPortfolio, selectedComponent]);
 
   // Handle removing a component
   const handleRemoveComponent = useCallback((index) => {
-    const newComponents = portfolio.components.filter((_, i) => i !== index);
+    if (!localPortfolio?.components) return;
+    
+    const newComponents = localPortfolio.components.filter((_, i) => i !== index);
 
     // Update the order property for each component
     const updatedComponents = newComponents.map((component, idx) => ({
@@ -440,45 +460,107 @@ export default function PortfolioBuilder() {
       order: idx
     }));
 
-    updatePortfolio.mutate({ components: updatedComponents });
+    setLocalPortfolio(prev => ({
+      ...prev,
+      components: updatedComponents
+    }));
 
     if (selectedComponent === index) {
       setSelectedComponent(null);
     } else if (selectedComponent > index) {
       setSelectedComponent(selectedComponent - 1);
     }
-  }, [portfolio, updatePortfolio, selectedComponent]);
+    
+    setHasUnsavedChanges(true);
+  }, [localPortfolio, selectedComponent]);
+
+  // Handle updating portfolio title or slug
+  const handlePortfolioUpdate = (field, value) => {
+    setLocalPortfolio(prev => ({
+      ...prev,
+      [field]: value
+    }));
+    
+    setHasUnsavedChanges(true);
+  };
+  
+  // Handle updating theme
+  const handleThemeUpdate = (themeId) => {
+    setLocalPortfolio(prev => ({
+      ...prev,
+      theme: themeId
+    }));
+    
+    setHasUnsavedChanges(true);
+  };
+
+  // Save changes to the database
+  const handleSaveChanges = async () => {
+    try {
+      await updatePortfolio.mutateAsync({
+        title: localPortfolio.title,
+        slug: localPortfolio.slug,
+        theme: localPortfolio.theme,
+        components: localPortfolio.components
+      });
+      
+      setHasUnsavedChanges(false);
+      toast({
+        title: "Changes saved",
+        description: "Your portfolio has been updated successfully.",
+        variant: "success",
+      });
+    } catch (error) {
+      toast({
+        title: "Failed to save changes",
+        description: error.message || "An error occurred while saving changes.",
+        variant: "destructive",
+      });
+    }
+  };
 
   const handlePublish = async () => {
     try {
-      if (!portfolio.slug && !publishSlug) {
+      if (!localPortfolio.slug && !publishSlug) {
         throw new Error('Portfolio URL is required');
+      }
+
+      // Save any unsaved changes first
+      if (hasUnsavedChanges) {
+        await handleSaveChanges();
       }
 
       // Send only the required fields for publishing
       const updates = {
         isPublished: true,
-        slug: publishSlug || portfolio.slug,
-        title: portfolio.title,
-        components: portfolio.components
+        slug: publishSlug || localPortfolio.slug,
       };
 
       await updatePortfolio.mutateAsync(updates);
       setPublishDialogOpen(false);
-      alert(`Portfolio published! View at: /portfolio/${updates.slug}`);
+      toast({
+        title: "Portfolio published!",
+        description: `Your portfolio is now available at /portfolio/${updates.slug}`,
+        variant: "success",
+      });
     } catch (error) {
-      alert(error.message || 'Failed to publish portfolio');
+      toast({
+        title: "Failed to publish",
+        description: error.message || "An error occurred while publishing your portfolio.",
+        variant: "destructive",
+      });
     }
   };
 
   if (isLoading) return <div>Loading...</div>;
   if (error) return <div>Error: {error.message}</div>;
+  if (!localPortfolio) return <div>Loading portfolio data...</div>;
 
   return (
     <div className="container py-8">
       <div className="max-w-6xl mx-auto">
         <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold">{portfolio?.title || 'Portfolio Builder'}</h1>
+          <h1 className="text-3xl font-bold">{localPortfolio?.title || 'Portfolio Builder'}</h1>
           <div className="space-x-4">
             <Button variant="outline" onClick={() => navigate('/profile')}>
               Back to Profile
@@ -488,17 +570,26 @@ export default function PortfolioBuilder() {
                 <Button>Preview</Button>
               </DialogTrigger>
               <DialogContent className="max-w-4xl">
-    <DialogHeader>
-      <DialogTitle>Portfolio Preview</DialogTitle>
-    </DialogHeader>
-    <div className="h-96 overflow-y-auto">
-      <PortfolioPreview 
-        components={portfolio?.components || []} 
-        theme={selectedTheme}
-      />
-    </div>
-  </DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Portfolio Preview</DialogTitle>
+                </DialogHeader>
+                <div className="h-96 overflow-y-auto">
+                  <PortfolioPreview 
+                    components={localPortfolio?.components || []} 
+                    theme={localPortfolio?.theme}
+                  />
+                </div>
+              </DialogContent>
             </Dialog>
+            <Button
+              variant="default"
+              onClick={handleSaveChanges}
+              disabled={updatePortfolio.isLoading || !hasUnsavedChanges}
+              className="gap-2"
+            >
+              <Save size={16} />
+              Save Changes
+            </Button>
             <Button
               variant="default"
               onClick={() => setPublishDialogOpen(true)}
@@ -507,6 +598,12 @@ export default function PortfolioBuilder() {
             </Button>
           </div>
         </div>
+
+        {hasUnsavedChanges && (
+          <div className="mb-6 p-4 rounded-md bg-yellow-50 border border-yellow-200 text-yellow-800">
+            <p>You have unsaved changes. Click "Save Changes" to save them before publishing.</p>
+          </div>
+        )}
 
         <div className="grid grid-cols-12 gap-6">
           <div className="col-span-4">
@@ -533,8 +630,8 @@ export default function PortfolioBuilder() {
                     </label>
                     <Input
                       id="portfolio-title"
-                      value={portfolio?.title || ''}
-                      onChange={(e) => updatePortfolio.mutate({ title: e.target.value })}
+                      value={localPortfolio?.title || ''}
+                      onChange={(e) => handlePortfolioUpdate('title', e.target.value)}
                     />
                   </div>
 
@@ -548,10 +645,10 @@ export default function PortfolioBuilder() {
                       </span>
                       <Input
                         id="portfolio-slug"
-                        value={portfolio?.slug || ''}
+                        value={localPortfolio?.slug || ''}
                         onChange={(e) => {
                           const newSlug = e.target.value.toLowerCase().replace(/\s+/g, '-');
-                          updatePortfolio.mutate({ slug: newSlug });
+                          handlePortfolioUpdate('slug', newSlug);
                         }}
                         placeholder="custom-url"
                       />
@@ -576,19 +673,16 @@ export default function PortfolioBuilder() {
                       {Object.values(portfolioThemes).map((theme) => (
                         <div
                           key={theme.id}
-                          className={`cursor-pointer rounded-lg border-2 p-4 transition-all ${selectedTheme === theme.id
+                          className={`cursor-pointer rounded-lg border-2 p-4 transition-all ${localPortfolio?.theme === theme.id
                               ? 'border-primary bg-primary/5'
                               : 'border-border hover:border-primary/50'
                             }`}
-                          onClick={() => {
-                            setSelectedTheme(theme.id);
-                            updatePortfolio.mutate({ theme: theme.id });
-                          }}
+                          onClick={() => handleThemeUpdate(theme.id)}
                         >
                           <div className="space-y-2">
                             <div className="flex items-center justify-between">
                               <h3 className="font-medium">{theme.name}</h3>
-                              {selectedTheme === theme.id && (
+                              {localPortfolio?.theme === theme.id && (
                                 <div className="text-primary">
                                   <svg
                                     xmlns="http://www.w3.org/2000/svg"
@@ -608,25 +702,23 @@ export default function PortfolioBuilder() {
                             <p className="text-sm text-muted-foreground">
                               {theme.description}
                             </p>
-                 
-{theme.preview && (
-  <div className="mt-2 grid grid-cols-5 gap-1 h-8 rounded-md overflow-hidden">
-    {Object.entries(theme.preview).map(([key, color]) => (
-      <div
-        key={key}
-        className="h-full"
-        style={{ backgroundColor: color }}
-        title={key}
-      />
-    ))}
-  </div>
-)}
+                            {theme.preview && (
+                              <div className="mt-2 grid grid-cols-5 gap-1 h-8 rounded-md overflow-hidden">
+                                {Object.entries(theme.preview).map(([key, color]) => (
+                                  <div
+                                    key={key}
+                                    className="h-full"
+                                    style={{ backgroundColor: color }}
+                                    title={key}
+                                  />
+                                ))}
+                              </div>
+                            )}
                           </div>
                         </div>
                       ))}
                     </div>
                   </div>
-
                 </div>
               </TabsContent>
             </Tabs>
@@ -634,7 +726,7 @@ export default function PortfolioBuilder() {
 
           <div className="col-span-8">
             <div>
-              {portfolio?.components?.map((component, index) => (
+              {localPortfolio?.components?.map((component, index) => (
                 <ReorderableComponent
                   key={`component-${index}`}
                   id={`component-${index}`}
@@ -671,7 +763,7 @@ export default function PortfolioBuilder() {
                 </span>
                 <Input
                   id="publish-slug"
-                  value={publishSlug || portfolio?.slug || ''}
+                  value={publishSlug || localPortfolio?.slug || ''}
                   onChange={(e) => setPublishSlug(e.target.value.toLowerCase().replace(/\s+/g, '-'))}
                   placeholder="your-portfolio-url"
                   required
@@ -687,7 +779,7 @@ export default function PortfolioBuilder() {
               </Button>
               <Button
                 onClick={handlePublish}
-                disabled={updatePortfolio.isLoading || (!publishSlug && !portfolio?.slug)}
+                disabled={updatePortfolio.isLoading || (!publishSlug && !localPortfolio?.slug)}
               >
                 {updatePortfolio.isLoading ? 'Publishing...' : 'Publish'}
               </Button>
